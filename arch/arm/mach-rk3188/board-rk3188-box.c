@@ -87,6 +87,10 @@
 #include "./board-rk31-vmac.c"
 #endif
 
+/* led1: green, led2: blue */
+#define RADXA_STATUS_LED1 RK30_PIN0_PB4
+#define RADXA_STATUS_LED2 RK30_PIN0_PB6
+
 static struct rk29_keys_button key_button[] = {
 	{
 		.desc	= "play",
@@ -101,6 +105,88 @@ struct rk29_keys_platform_data rk29_keys_pdata = {
 	.nbuttons	= ARRAY_SIZE(key_button),
 	.chn	= 1,  //chn: 0-7, if do not use ADC,set 'chn' -1
 };
+
+#if defined (CONFIG_TOUCHSCREEN_86V_GT811_IIC)
+#define TOUCH_RESET_PIN  RK30_PIN0_PA6
+#define TOUCH_INT_PIN    RK30_PIN0_PA7
+int gt811_init_platform_hw(void)
+{
+    printk("gt811 reset pin0_PA6 \n");
+
+    if(gpio_request(TOUCH_RESET_PIN,NULL) != 0){
+      gpio_free(TOUCH_RESET_PIN);
+      printk("gt811_init_platform_hw gpio_request error\n");
+      return -EIO;
+    }
+
+    if(gpio_request(TOUCH_INT_PIN,NULL) != 0){
+      gpio_free(TOUCH_INT_PIN);
+      printk("gt811_init_platform_hw gpio_request error\n");
+      return -EIO;
+    }
+    //gpio_pull_updown(TOUCH_INT_PIN, 1);
+    gpio_direction_output(TOUCH_RESET_PIN, 0);
+    msleep(500);
+    gpio_set_value(TOUCH_RESET_PIN,GPIO_LOW);
+    msleep(500);
+    gpio_set_value(TOUCH_RESET_PIN,GPIO_HIGH);
+    mdelay(100);
+
+    return 0;
+}
+
+
+static struct goodix_platform_data gt811_info = {
+  .model= 811,
+  .init_platform_hw= gt811_init_platform_hw,
+
+};
+#endif
+
+#if defined(CONFIG_TOUCHSCREEN_GT8XX)
+#define TOUCH_RESET_PIN RK30_PIN0_PA7
+#define TOUCH_PWR_PIN   INVALID_GPIO
+
+static int goodix_init_platform_hw(void)
+{
+	int ret;
+
+	if (TOUCH_PWR_PIN != INVALID_GPIO) {
+		ret = gpio_request(TOUCH_PWR_PIN, "goodix power pin");
+		if (ret != 0) {
+			gpio_free(TOUCH_PWR_PIN);
+			printk("goodix power error\n");
+			return -EIO;
+		}
+		gpio_direction_output(TOUCH_PWR_PIN, 0);
+		gpio_set_value(TOUCH_PWR_PIN, GPIO_LOW);
+		msleep(100);
+	}
+
+	if (TOUCH_RESET_PIN != INVALID_GPIO) {
+		ret = gpio_request(TOUCH_RESET_PIN, "goodix reset pin");
+		if (ret != 0) {
+			gpio_free(TOUCH_RESET_PIN);
+			printk("goodix gpio_request error\n");
+			return -EIO;
+		}
+		gpio_direction_output(TOUCH_RESET_PIN, 1);
+                msleep(100);
+		gpio_set_value(TOUCH_RESET_PIN, GPIO_LOW);
+		msleep(100);
+		gpio_set_value(TOUCH_RESET_PIN, GPIO_HIGH);
+		msleep(500);
+	}
+	return 0;
+}
+
+struct goodix_platform_data goodix_info = {
+	.model = 8105,
+	.irq_pin = RK30_PIN0_PA6,
+	.rest_pin = TOUCH_RESET_PIN,
+	.init_platform_hw = goodix_init_platform_hw,
+};
+#endif
 
 #if defined(CONFIG_CT36X_TS)
 
@@ -135,7 +221,7 @@ static struct spi_board_info board_spi_devices[] = {
 #ifdef CONFIG_BACKLIGHT_RK29_BL
 #define PWM_ID            3
 #define PWM_MODE	  PWM3
-#define PWM_EFFECT_VALUE  1
+#define PWM_EFFECT_VALUE  0
 
 #define LCD_DISP_ON_PIN
 
@@ -175,6 +261,7 @@ static int rk29_backlight_io_deinit(void)
 	return ret;
 }
 
+
 static int rk29_backlight_pwm_suspend(void)
 {
 	int ret = 0, pwm_gpio;
@@ -189,6 +276,9 @@ static int rk29_backlight_pwm_suspend(void)
 	gpio_direction_output(BL_EN_PIN, 0);
 	gpio_set_value(BL_EN_PIN, !BL_EN_VALUE);
 #endif
+
+	gpio_direction_output(RADXA_STATUS_LED1, GPIO_HIGH);
+
 	return ret;
 }
 
@@ -203,12 +293,15 @@ static int rk29_backlight_pwm_resume(void)
 	gpio_direction_output(BL_EN_PIN, 1);
 	gpio_set_value(BL_EN_PIN, BL_EN_VALUE);
 #endif
+
+	gpio_direction_output(RADXA_STATUS_LED1, GPIO_LOW);
+
 	return 0;
 }
 
 static struct rk29_bl_info rk29_bl_info = {
-        .min_brightness = 65,
-        .max_brightness = 150,
+        .min_brightness = 120,
+        .max_brightness = 255,
         .brightness_mode =BRIGHTNESS_MODE_CONIC,
 	.pre_div = 40 * 1000,  // pwm output clk: 40k;
 	.pwm_id = PWM_ID,
@@ -392,7 +485,7 @@ static struct sensor_platform_data cm3217_info = {
 
 #ifdef CONFIG_FB_ROCKCHIP
 
-#define LCD_CS_PIN         INVALID_GPIO
+#define LCD_CS_PIN         RK30_PIN2_PD6
 #define LCD_CS_VALUE       GPIO_HIGH
 
 #define LCD_EN_PIN         RK30_PIN0_PB0
@@ -460,7 +553,11 @@ static int rk_fb_io_enable(void)
 
 #if defined(CONFIG_LCDC0_RK3188)
 struct rk29fb_info lcdc0_screen_info = {
-	.prop           = EXTEND,       //extend display device
+#if defined(CONFIG_RK616_LVDS)
+       .prop           = PRMRY,       //primary display device
+#else
+       .prop           = EXTEND,      //extend display device
+#endif
        .lcd_info  = NULL,
        .set_screen_info = set_lcd_info,
 
@@ -1306,8 +1403,8 @@ static struct rkdisplay_platform_data tv_data = {
 	.property 		= DISPLAY_MAIN,
 	.video_source 	= DISPLAY_SOURCE_LCDC0,
 	.io_pwr_pin 	= INVALID_GPIO,
-	.io_reset_pin 	= RK30_PIN3_PD4,
-	.io_switch_pin	= RK30_PIN2_PD7,
+	.io_reset_pin 	= RK30_PIN3_PD7,
+	.io_switch_pin	= INVALID_GPIO,
 };
 #endif
 
@@ -1332,7 +1429,7 @@ static struct rk616_platform_data rk616_pdata = {
 	.scl_rate   = RK616_SCL_RATE,
 	.lcd0_func = INPUT,             //port lcd0 as input
 	.lcd1_func = UNUSED,             //port lcd1 as input
-//	.lvds_ch_nr = 1,				//the number of used lvds channel  
+	.lvds_ch_nr = 1,				//the number of used lvds channel
 	.hdmi_irq = INVALID_GPIO,
 	.spk_ctl_gpio = INVALID_GPIO,
 	.hp_ctl_gpio = INVALID_GPIO,
@@ -1342,6 +1439,27 @@ static struct rk616_platform_data rk616_pdata = {
 // i2c
 #ifdef CONFIG_I2C0_RK30
 static struct i2c_board_info __initdata i2c0_info[] = {
+
+#if defined (CONFIG_TOUCHSCREEN_86V_GT811_IIC)
+{
+	.type          = "gt811_ts",
+	.addr          = 0x5d,
+	.flags         = 0,
+	.irq           = TOUCH_INT_PIN,
+	.platform_data = &gt811_info,
+},
+#endif
+
+#if defined (CONFIG_TOUCHSCREEN_GT8XX)
+        {
+                .type          = "Goodix-TS",
+                .addr          = 0x5d,
+                .flags         = 0,
+                .irq           = RK30_PIN0_PA6,
+                .platform_data = &goodix_info,
+        },
+#endif
+
 #if defined (CONFIG_GS_MMA8452)
 	{
 		.type	        = "gs_mma8452",
@@ -2112,6 +2230,8 @@ static void __init machine_rk30_board_init(void)
 	
         gpio_direction_output(POWER_ON_PIN, GPIO_HIGH);
 
+	gpio_request(RADXA_STATUS_LED1, "led1");
+	gpio_direction_output(RADXA_STATUS_LED1, GPIO_LOW);
 
 	rk30_i2c_register_board_info();
 	spi_register_board_info(board_spi_devices, ARRAY_SIZE(board_spi_devices));
@@ -2244,15 +2364,15 @@ static struct cpufreq_frequency_table dvfs_gpu_table[] = {
        {.frequency = 266 * 1000,       .index = 1025 * 1000},  
        {.frequency = 300 * 1000,       .index = 1050 * 1000},  
        {.frequency = 400 * 1000,       .index = 1100 * 1000},
-       {.frequency = 600 * 1000,       .index = 1250 * 1000},
+       //{.frequency = 600 * 1000,       .index = 1250 * 1000},
 	{.frequency = CPUFREQ_TABLE_END},
 };
 
 static struct cpufreq_frequency_table dvfs_ddr_table[] = {
 	{.frequency = 200 * 1000 + DDR_FREQ_SUSPEND,    .index = 950 * 1000},
 //	{.frequency = 300 * 1000 + DDR_FREQ_VIDEO,      .index = 1000 * 1000},
-//	{.frequency = 400 * 1000 + DDR_FREQ_NORMAL,     .index = 1100 * 1000},
-	{.frequency = 600 * 1000 + DDR_FREQ_NORMAL,     .index = 1200 * 1000},
+	{.frequency = 400 * 1000 + DDR_FREQ_NORMAL,     .index = 1100 * 1000},
+//	{.frequency = 600 * 1000 + DDR_FREQ_NORMAL,     .index = 1200 * 1000},
 	{.frequency = CPUFREQ_TABLE_END},
 };
 static struct cpufreq_frequency_table dvfs_ddr_table_t[] = {
