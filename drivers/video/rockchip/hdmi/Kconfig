@@ -25,3 +25,12 @@ config RK_HDMI_CTL_CODEC
 		help
 			If you say y heres, Codec will be mute when hdmi inserted,
 			and unmute when removed. 
+
+choice
+		prompt "RK30 HDMI resolution select"
+		depends on HDMI_RK30
+config HDMI_RK30_RES_720P
+		bool "Default fixed resolution is 720P"
+config HDMI_RK30_RES_1080P
+		bool "Default fixed resolution is 1080P"
+endchoice
