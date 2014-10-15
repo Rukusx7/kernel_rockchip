@@ -312,11 +312,7 @@ struct hdmi {
 #define HDMI_AUTO_CONFIG		true
 
 // HDMI default vide mode
-#if defined(CONFIG_HDMI_RK30_RES_1080P)
-#define HDMI_VIDEO_DEFAULT_MODE			HDMI_1920x1080p_60HZ
-#else
-#define HDMI_VIDEO_DEFAULT_MODE			HDMI_1280x720p_60HZ
-#endif
+#define HDMI_VIDEO_DEFAULT_MODE			HDMI_1280x720p_60HZ//HDMI_1920x1080p_60HZ
 
 // HDMI default audio parameter
 #define HDMI_AUDIO_DEFAULT_TYPE 		HDMI_AUDIO_LPCM
